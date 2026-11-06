@@ -2,6 +2,8 @@
 
 Pick training frames from **hours-long videos**, side by side with your YOLO model's output.
 
+![YOLO Frame Review demo](docs/demo.gif)
+
 You run a detector over long footage, render the predictions into a video, and now need to find the
 frames where it got things wrong so you can label them and retrain. Generic video players lag on long
 files and can't save the clean frame behind an annotated one. This tool does exactly that one job, fast.

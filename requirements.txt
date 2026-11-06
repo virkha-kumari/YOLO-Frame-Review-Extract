@@ -1,0 +1,5 @@
+# Tested with: opencv-python 4.12, numpy 2.0.1, Pillow 11.1, Python 3.9+
+# Tkinter ships with the standard Python installer (Linux: apt install python3-tk)
+opencv-python
+numpy
+Pillow

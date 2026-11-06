@@ -1,0 +1,34 @@
+# Runtime data — holds your video names, notes and frames. Never commit.
+extraction_session.json
+extracted_frames_*/
+
+# Videos / images
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.flv
+*.wmv
+*.webm
+*.jpg
+*.png
+!docs/*.gif
+!docs/*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+venv/
+env/
+.venv
+
+# IDE / assistant
+.vscode/
+.idea/
+.remember/
+.claude/

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yolo-frame-review"
+dynamic = ["version"]
+description = "Pick training frames from hours-long videos, side by side with YOLO output"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["opencv-python", "numpy", "Pillow"]
+keywords = ["yolo", "computer-vision", "dataset", "video", "frame-extraction", "annotation"]
+
+[project.scripts]
+yolo-frame-review = "yolo_frame_review.app:main"
+
+[tool.setuptools]
+packages = ["yolo_frame_review"]
+
+[tool.setuptools.dynamic]
+version = { attr = "yolo_frame_review.__version__" }

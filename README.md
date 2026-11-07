@@ -32,12 +32,17 @@ pip install -r requirements.txt
 python -m yolo_frame_review
 ```
 
-Or install it as a command:
+`python -m` takes a module name, not a path, so run it from the repo root.
+
+**Run from any folder:** install it once in editable mode. This registers a `yolo-frame-review` command
+(defined in `pyproject.toml`, calls `app:main`) in your active environment:
 
 ```bash
-pip install .
+pip install -e /path/to/yolo-frame-review
 yolo-frame-review
 ```
+
+Editable mode points at your clone, so code changes apply without reinstalling.
 
 ## Usage
 

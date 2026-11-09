@@ -38,7 +38,7 @@ python -m yolo_frame_review
 (defined in `pyproject.toml`, calls `app:main`) in your active environment:
 
 ```bash
-pip install -e /path/to/YOLO-Frame-Review-Extract/yolo-frame-review
+pip install -e /path/to/YOLO-Frame-Review-Extract
 yolo-frame-review
 ```
 

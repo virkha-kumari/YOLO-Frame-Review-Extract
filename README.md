@@ -26,8 +26,8 @@ files and can't save the clean frame behind an annotated one. This tool does exa
 Python 3.9+ with Tkinter (bundled with the standard Windows/macOS installers; on Linux `apt install python3-tk`).
 
 ```bash
-git clone http://github.com/virkha-kumari/YOLO-Frame-Review-Extract.git
-cd yolo-frame-review
+git clone https://github.com/virkha-kumari/YOLO-Frame-Review-Extract.git
+cd YOLO-Frame-Review-Extract
 pip install -r requirements.txt
 python -m yolo_frame_review
 ```
@@ -38,7 +38,7 @@ python -m yolo_frame_review
 (defined in `pyproject.toml`, calls `app:main`) in your active environment:
 
 ```bash
-pip install -e /path/to/yolo-frame-review
+pip install -e /path/to/YOLO-Frame-Review-Extract/yolo-frame-review
 yolo-frame-review
 ```
 

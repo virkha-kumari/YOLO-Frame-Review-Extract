@@ -68,6 +68,12 @@ A candidate is accepted only if it has the **same frame count and FPS** as the s
 frame *n* to frame *n*. Any video with no match, a length mismatch, or more than one valid match is listed
 in one summary dialog (full list also printed to the console).
 
+> **Tip: use MP4 for YOLO pairing.** Pairing compares frame counts read from the file header. MP4 headers
+> store the true frame count; MKV headers often state the wrong FPS (e.g. 30 instead of a real ~27).
+> Pairing works with MKV only when the header frame count is correct — otherwise the pair is rejected,
+> never attached misaligned. MKV files still play and seek correctly (the app counts the real frames when
+> a video loads); only folder pairing is affected. MP4 is recommended.
+
 ### Shortcuts
 
 | Action | Keys |

@@ -10,7 +10,8 @@ import numpy as np
 from PIL import Image, ImageTk
 
 from . import session, yolo_pairing
-from .video import VIDEO_EXTS, ScrubWorker, position_cap, read_frame
+from .video import (VIDEO_EXTS, ScrubWorker, build_frame_index, position_cap,
+                    read_frame)
 
 
 class FrameReviewApp:
@@ -27,6 +28,8 @@ class FrameReviewApp:
         self.total_frames = 0
         self.fps = 0
         self.current_frame_idx = 0
+        # Timestamp (ms) of every real frame of self.cap's video, or None
+        self.frame_ts = None
 
         # Optional YOLO-annotated twin of the current video — display only.
         # Save/delete/smart-skip always use self.cap (original pixels).
@@ -35,6 +38,9 @@ class FrameReviewApp:
         # rel video path -> YOLO video path, filled by "Attach YOLO folder";
         # load_video auto-attaches from it
         self.yolo_map = {}
+        # Full video list from Browse Folder, kept while a YOLO folder hides its
+        # matched twins — Detach YOLO Folder restores it. None = nothing hidden.
+        self._all_videos = None
 
         # Slider drag state
         self.slider_dragging = False
@@ -176,7 +182,7 @@ class FrameReviewApp:
                   padx=15, cursor="hand2", relief=tk.FLAT).pack(side=tk.LEFT, padx=10)
         # Disabled until Browse Folder has loaded videos (enabled in load_videos)
         self.yolo_folder_btn = tk.Button(
-            top_frame, text="Attach YOLO Folder", command=self.attach_yolo_folder,
+            top_frame, text="Attach YOLO Folder", command=self.toggle_yolo_folder,
             bg=AC_ORA, fg="white", font=("Arial", 10, "bold"),
             disabledforeground="#6a6a6a", state=tk.DISABLED,
             padx=15, cursor="hand2", relief=tk.FLAT)
@@ -497,6 +503,8 @@ class FrameReviewApp:
     def load_videos(self):
         self.videos = []
         self.yolo_map = {}  # mapping belongs to the previous folder
+        self._all_videos = None
+        self._set_yolo_folder_btn(attached=False)
         self.video_listbox.delete(0, tk.END)
 
         all_videos = []
@@ -574,11 +582,25 @@ class FrameReviewApp:
         self.cap = cap
 
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
-        total = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total <= 0:
-            self.cap.set(cv2.CAP_PROP_POS_AVI_RATIO, 1.0)
-            total = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+        # Real frame count + per-frame timestamps from one pass over the file.
+        # Slow on long videos (~40s/hour measured), but makes every seek land
+        # on the true frame even when the container's fps/count are wrong.
+        def progress(n):
+            self.status_label.config(text=f"Indexing {video_name}… {n} frames")
+            self.root.update_idletasks()
+
+        self.status_label.config(text=f"Indexing {video_name}…")
+        self.root.update_idletasks()
+        self.frame_ts = build_frame_index(self.current_video_path, progress)
+        if self.frame_ts is not None:
+            total = len(self.frame_ts)
+        else:  # no usable timestamps — fall back to container metadata
+            total = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if total <= 0:
+                self.cap.set(cv2.CAP_PROP_POS_AVI_RATIO, 1.0)
+                total = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         self.total_frames = max(total, 1)
 
         first = self._read_frame(0)
@@ -630,11 +652,17 @@ class FrameReviewApp:
 
         return frame_rgb[y1:y1 + crop_h, x1:x1 + crop_w]
 
+    def _ts_for(self, cap):
+        """Frame index only applies to the original video's cap."""
+        return self.frame_ts if cap is None or cap is self.cap else None
+
     def _position_cap(self, frame_idx, cap=None):
-        return position_cap(cap if cap is not None else self.cap, frame_idx)
+        return position_cap(cap if cap is not None else self.cap, frame_idx,
+                            self._ts_for(cap))
 
     def _read_frame(self, frame_idx, cap=None):
-        return read_frame(cap if cap is not None else self.cap, frame_idx)
+        return read_frame(cap if cap is not None else self.cap, frame_idx,
+                          self._ts_for(cap))
 
     def _display_cap(self):
         """Cap whose frames go on screen — YOLO twin if attached, else original."""
@@ -782,6 +810,35 @@ class FrameReviewApp:
 
     # ── YOLO folder: auto-pair every video by filename prefix ──
 
+    def _set_yolo_folder_btn(self, attached):
+        if attached:
+            self.yolo_folder_btn.config(text="Detach YOLO Folder", bg="#c0392b")
+        else:
+            self.yolo_folder_btn.config(text="Attach YOLO Folder", bg="#d4863a")
+
+    def toggle_yolo_folder(self):
+        if self.yolo_map or self._all_videos is not None:
+            self.detach_yolo_folder()
+        else:
+            self.attach_yolo_folder()
+
+    def detach_yolo_folder(self):
+        """Forget the folder mapping and bring hidden twins back into the list."""
+        if self.is_playing:
+            self.toggle_playback()
+        self.yolo_map = {}
+        if self._all_videos is not None:
+            self.videos, self._all_videos = self._all_videos, None
+            self.update_video_checkmarks()
+            self.update_saved_count()
+            if self.current_video in self.videos:
+                self._select_list_row(self.videos.index(self.current_video))
+        self._set_yolo_folder_btn(attached=False)
+        if self.yolo_cap is not None:
+            self._detach_yolo()
+            self.display_frame(self.current_frame_idx)
+        self.status_label.config(text="YOLO folder detached — showing originals")
+
     def attach_yolo_folder(self):
         if not self.videos:
             messagebox.showwarning("Warning", "Please load a video folder first")
@@ -800,25 +857,33 @@ class FrameReviewApp:
             return
 
         # YOLO folder nested inside the video folder (e.g. videos/yolo_output):
-        # Browse Folder's recursive scan listed the YOLO videos as sources too.
-        # They're twins, not sources — drop them from the list.
+        # Browse Folder's recursive scan listed the YOLO videos too. Only the
+        # videos outside it are sources to pair.
+        all_videos = self._all_videos or self.videos
         nested = (yolo_pairing.is_under(folder, self.video_folder)
                   and not yolo_pairing.is_under(self.video_folder, folder))
-        if nested:
-            self.videos = [v for v in self.videos if not yolo_pairing.is_under(
-                os.path.join(self.video_folder, v), folder)]
+        sources = [v for v in all_videos if not (nested and yolo_pairing.is_under(
+            os.path.join(self.video_folder, v), folder))]
 
         def progress(i, n):
             self.status_label.config(text=f"Matching YOLO videos… {i}/{n}")
             self.root.update_idletasks()
 
-        n = len(self.videos)
+        n = len(sources)
         self.yolo_map, failures = yolo_pairing.pair_folder(
-            self.videos, self.video_folder, yolo_files, progress)
+            sources, self.video_folder, yolo_files, progress)
 
-        if nested:
-            self.update_video_checkmarks()
-            self.update_saved_count()
+        # Hide only files actually paired as a twin. Anything that matched
+        # nothing (incl. stray files inside the YOLO folder) stays listed and
+        # opens raw, so frames can still be extracted from it.
+        twins = {os.path.normcase(os.path.abspath(p)) for p in self.yolo_map.values()}
+        self.videos = [v for v in all_videos if os.path.normcase(os.path.abspath(
+            os.path.join(self.video_folder, v))) not in twins]
+        self._all_videos = all_videos if len(self.videos) != len(all_videos) else None
+        self._set_yolo_folder_btn(attached=bool(self.yolo_map))
+
+        self.update_video_checkmarks()
+        self.update_saved_count()
         if self.current_video not in self.videos:
             # Video on screen was a YOLO twin that just got hidden — jump to first
             # source (load_video auto-attaches its twin)
@@ -826,8 +891,7 @@ class FrameReviewApp:
                 self._select_list_row(0)
                 self.load_video(self.videos[0])
         else:
-            if nested:
-                self._select_list_row(self.videos.index(self.current_video))
+            self._select_list_row(self.videos.index(self.current_video))
             # Attach for the video on screen right now (others attach on load)
             if self.current_video in self.yolo_map:
                 self._detach_yolo()
@@ -1043,7 +1107,9 @@ class FrameReviewApp:
         self.root.update_idletasks()
 
         # sequential read: seek once to start+1, read every frame, compare every STRIDE-th
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, start + 1)
+        if not self._position_cap(start + 1):
+            self.status_label.config(text="Smart skip: no significant change found")
+            return
         current = start + 1
         for idx in range(start + STRIDE, self.total_frames, STRIDE):
             # skip frames between last read position and target
@@ -1104,9 +1170,18 @@ class FrameReviewApp:
 
         # Grab-forward for short advances, real seek only when out of sync
         cap = self._display_cap()
-        self._position_cap(next_idx, cap)
-
-        ret, bgr = cap.read()
+        ret, bgr = cap.read() if self._position_cap(next_idx, cap) else (False, None)
+        if not ret:
+            # Header overstated the frame count (e.g. MKV with wrong fps): the
+            # real end is here. Stop instead of retrying the same frame forever.
+            self.is_playing = False
+            self.total_frames = max(next_idx, 1)
+            self.play_btn.config(text="▶ Play", bg="#4a9eda")
+            self._update_frame_label(self.current_frame_idx)
+            self.draw_slider()
+            self.status_label.config(
+                text=f"Playback finished — video really has {self.total_frames} frames")
+            return
         if ret:
             frame_rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             self.current_frame_idx = next_idx
@@ -1187,8 +1262,11 @@ class FrameReviewApp:
     def _request_scrub_frame(self, frame_idx):
         if not self.current_video_path:
             return
-        path = self.yolo_path or self.current_video_path
-        self._scrub.request(path, frame_idx, self._scrub_gen)
+        if self.yolo_path:
+            self._scrub.request(self.yolo_path, frame_idx, self._scrub_gen)
+        else:
+            self._scrub.request(self.current_video_path, frame_idx,
+                                self._scrub_gen, self.frame_ts)
 
     def _on_scrub_result(self, frame_rgb, idx, gen):
         if gen != self._scrub_gen:
@@ -1215,7 +1293,10 @@ class FrameReviewApp:
             self.slider_canvas.delete(self.slider_items.pop('active_dot'))
 
     def _update_frame_label(self, frame_idx):
-        time_sec = frame_idx / self.fps if self.fps > 0 else 0
+        if self.frame_ts is not None and frame_idx < len(self.frame_ts):
+            time_sec = self.frame_ts[frame_idx] / 1000  # real time, not idx/fps
+        else:
+            time_sec = frame_idx / self.fps if self.fps > 0 else 0
         self.frame_label.config(
             text=f"Frame: {frame_idx} / {self.total_frames} | "
                  f"Time: {int(time_sec // 60)}:{time_sec % 60:05.2f}")
